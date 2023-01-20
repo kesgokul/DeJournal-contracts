@@ -166,4 +166,57 @@ const { mine } = require("@nomicfoundation/hardhat-network-helpers");
           ).to.be.revertedWith("DeJournalGovernor__alreadyVotedOnProspect");
         });
       });
+
+      describe("Induct member", () => {
+        let prospectId;
+        beforeEach(async () => {
+          const { scholar1 } = await getNamedAccounts();
+          const tx = await governorContract.introduceProspect(
+            scholar1,
+            metadataHash
+          );
+          const txReceipt = await tx.wait(1);
+          prospectId = txReceipt.events[0].args[0];
+        });
+
+        it("should revert if the voting period is active", async () => {
+          await expect(
+            governorContract.inductMember(prospectId)
+          ).to.be.revertedWith("DeJournalGovernor__prospectVotingStillActive");
+        });
+
+        it("should revert if not enough for votes", async () => {
+          const tx = await governorContract.voteOnProspect(prospectId, true);
+          await tx.wait(1);
+          await mine(72001);
+
+          await expect(
+            governorContract.inductMember(prospectId)
+          ).to.be.revertedWith("DeJournalGovernor__prospectFailedVoting");
+        });
+
+        it("should induct member and emit event if prospect has enough for votes", async () => {
+          const tx = await governorContract.voteOnProspect(prospectId, true);
+          await tx.wait(1);
+          const [deployer, member1, member2, scholar1] =
+            await ethers.getSigners();
+          const govContract1 = governorContract.connect(member1);
+          const govContract2 = governorContract.connect(member2);
+
+          await (await govContract1.voteOnProspect(prospectId, true)).wait(1);
+          await (await govContract2.voteOnProspect(prospectId, true)).wait(1);
+
+          await mine(72001);
+
+          const inductTx = await governorContract.inductMember(prospectId);
+          const txReceipt = await inductTx.wait(1);
+
+          const newMemberBalance = await governanceTokenContract.balanceOf(
+            scholar1.address
+          );
+
+          assert.equal(txReceipt.events[1].args[0], scholar1.address);
+          assert.equal(newMemberBalance.toString(), "1");
+        });
+      });
     });

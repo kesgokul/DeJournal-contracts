@@ -8,12 +8,12 @@ contract DeJournalToken is ERC721, Ownable {
     uint256 private s_counter;
 
     constructor() ERC721("DeJournal Governance Token", "DeJou") {
-        s_counter = 1;
+        s_counter = 0;
     }
 
     function mint(address to) public onlyOwner returns (uint256) {
-        _safeMint(to, s_counter);
         s_counter++;
-        return s_counter - 1;
+        _safeMint(to, s_counter);
+        return s_counter;
     }
 }

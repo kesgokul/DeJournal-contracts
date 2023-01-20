@@ -9,6 +9,9 @@ error DeJournalGovernor__alreadyInit();
 error DeJournalGovernor__referrerNotMember();
 error DeJournalGovernor__alreadyVotedOnProspect();
 error DeJournalGovernor__prospectVotingNotActive();
+error DeJournalGovernor__AlreadyMember();
+error DeJournalGovernor__prospectVotingStillActive();
+error DeJournalGovernor__prospectFailedVoting();
 
 contract DeJournalGovernor {
     using SafeCast for uint256;
@@ -43,6 +46,7 @@ contract DeJournalGovernor {
 
     event ProspectIntroduced(uint256, address);
     event VotedOnProspect(uint256, address, bool);
+    event NewMemberAdded(address, uint256);
 
     modifier onlyMember() {
         if (!s_isMember[msg.sender]) {
@@ -68,8 +72,7 @@ contract DeJournalGovernor {
         address[3] memory owners = s_initMembers;
         for (uint256 i = 0; i < owners.length; i++) {
             if (owners[i] != address(0)) {
-                s_isMember[owners[i]] = true;
-                governanceTokenContract.mint(owners[i]);
+                _addMember(owners[i]);
             }
         }
         s_init = true;
@@ -139,6 +142,35 @@ contract DeJournalGovernor {
         }
 
         emit VotedOnProspect(_prospectId, msg.sender, _support);
+    }
+
+    function inductMember(
+        uint256 _prospectId
+    ) public onlyMember returns (uint256) {
+        if (block.number < s_prospects[_prospectId].deadline) {
+            revert DeJournalGovernor__prospectVotingStillActive();
+        }
+
+        if (
+            s_prospects[_prospectId].forVotes < 3 ||
+            s_prospects[_prospectId].againstVotes >
+            s_prospects[_prospectId].forVotes
+        ) {
+            revert DeJournalGovernor__prospectFailedVoting();
+        }
+
+        _addMember(s_prospects[_prospectId].prospectAddress);
+        return _prospectId;
+    }
+
+    function _addMember(address _member) internal {
+        if (s_isMember[_member]) {
+            revert DeJournalGovernor__AlreadyMember();
+        }
+        s_isMember[_member] = true;
+        uint256 tokenId = governanceTokenContract.mint(_member);
+
+        emit NewMemberAdded(_member, tokenId);
     }
 
     // view and pure getter functions
