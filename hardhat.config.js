@@ -4,6 +4,7 @@ require("hardhat-deploy");
 require("@nomiclabs/hardhat-waffle");
 require("ethereum-waffle");
 require("@nomiclabs/hardhat-etherscan");
+require("@nomicfoundation/hardhat-network-helpers");
 require("dotenv").config();
 module.exports = {
   solidity: "0.8.17",
@@ -25,6 +26,12 @@ module.exports = {
     },
     scholar1: {
       default: 3,
+    },
+    scholar2: {
+      default: 4,
+    },
+    scholar3: {
+      default: 5,
     },
   },
   mocha: {

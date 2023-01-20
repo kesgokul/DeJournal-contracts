@@ -39,8 +39,9 @@ contract DeJournalGovernor {
     mapping(address => bool) private s_isMember;
     DeJournalToken governanceTokenContract;
 
-    mapping(uint256 => Prospect) private _prospects;
+    mapping(uint256 => Prospect) private s_prospects;
 
+    event ProspectIntroduced(uint256, address);
     event VotedOnProspect(uint256, address, bool);
 
     modifier onlyMember() {
@@ -55,7 +56,7 @@ contract DeJournalGovernor {
         s_initMembers = _members;
     }
 
-    /*
+    /** 
     @notice the init function to initialize the founding members of the Journal DAO.
             It can be called only once. It is called by the deployer, post which the ownership
             of the governance token contract will be transfered to this contract (governor).
@@ -74,6 +75,13 @@ contract DeJournalGovernor {
         s_init = true;
     }
 
+    /**
+     * @notice This function is called by any existing member to add a new member to the DAO
+     * Can only be called by an existing member
+     * @param _prospectAddress will be the address of the prospect member
+     * @param _metadataHash will be the hash of the URI containing the Prospect's academic credentials/docs
+     * @return prospectId that is computed using the above mentioned params
+     */
     function introduceProspect(
         address _prospectAddress,
         bytes32 _metadataHash
@@ -84,53 +92,83 @@ contract DeJournalGovernor {
             keccak256(abi.encode(_prospectAddress, _metadataHash))
         );
 
-        Prospect storage prospect = _prospects[prospectId];
+        Prospect storage prospect = s_prospects[prospectId];
         prospect.voteStart = block.number + PROSPECT_VOTING_DELAY;
         prospect.deadline = prospect.voteStart + PROSPECT_VOTING_PERIOD;
         prospect.prospectAddress = _prospectAddress;
         prospect.referrer = msg.sender;
+        prospect.metadataHash = _metadataHash;
 
+        emit ProspectIntroduced(prospectId, _prospectAddress);
         return prospectId;
     }
 
+    /**
+     * @notice this function will be called by any existing member to cast their vote on any pending prospect
+     * the function will check if the voting period is active
+     * @param _prospectId - the ID of the prospect returned from the introduceProspect() function.
+     * @param _support - whether the msg.sender supports the prospect or not
+     */
     function voteOnProspect(
         uint256 _prospectId,
         bool _support
     ) public onlyMember {
         if (
-            block.number >= _prospects[_prospectId].deadline ||
-            block.number < _prospects[_prospectId].voteStart
+            block.number >= s_prospects[_prospectId].deadline ||
+            block.number < s_prospects[_prospectId].voteStart
         ) {
             revert DeJournalGovernor__prospectVotingNotActive();
         }
 
-        if (_prospects[_prospectId].receipts[msg.sender].hasVoted) {
+        if (s_prospects[_prospectId].receipts[msg.sender].hasVoted) {
             revert DeJournalGovernor__alreadyVotedOnProspect();
         }
 
         if (_support) {
-            _prospects[_prospectId].receipts[msg.sender].hasVoted = true;
-            _prospects[_prospectId].receipts[msg.sender].support = true;
+            s_prospects[_prospectId].receipts[msg.sender].hasVoted = true;
+            s_prospects[_prospectId].receipts[msg.sender].support = true;
 
-            _prospects[_prospectId].forVotes += 1;
+            s_prospects[_prospectId].forVotes += 1;
         }
 
         if (!_support) {
-            _prospects[_prospectId].receipts[msg.sender].hasVoted = true;
-            _prospects[_prospectId].receipts[msg.sender].support = false;
+            s_prospects[_prospectId].receipts[msg.sender].hasVoted = true;
+            s_prospects[_prospectId].receipts[msg.sender].support = false;
 
-            _prospects[_prospectId].againstVotes + 1;
+            s_prospects[_prospectId].againstVotes + 1;
         }
 
         emit VotedOnProspect(_prospectId, msg.sender, _support);
     }
 
     // view and pure getter functions
-    function getInitOwners() public view returns (address[3] memory) {
+    function getInitMembers() public view returns (address[3] memory) {
         return s_initMembers;
     }
 
     function getGovernanceToken() public view returns (address) {
         return address(governanceTokenContract);
+    }
+
+    function getProspectMetadata(
+        uint256 _prospectId
+    ) public view returns (bytes32) {
+        return s_prospects[_prospectId].metadataHash;
+    }
+
+    function getProspectReceipt(
+        uint256 _prospectId,
+        address _voter
+    ) public view returns (ProspectVoteReceipt memory) {
+        return s_prospects[_prospectId].receipts[_voter];
+    }
+
+    function getProspectVotes(
+        uint256 _prospectId
+    ) public view returns (uint256, uint256) {
+        return (
+            s_prospects[_prospectId].forVotes,
+            s_prospects[_prospectId].againstVotes
+        );
     }
 }

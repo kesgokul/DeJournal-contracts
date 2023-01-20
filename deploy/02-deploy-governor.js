@@ -31,7 +31,7 @@ module.exports = async function ({ getNamedAccounts, deployments }) {
     "DeJournalGovernor",
     deployer
   );
-  await governorContract.initializeOwners({
+  await governorContract.initializeMembers({
     gasLimit: 30000000,
   });
 
