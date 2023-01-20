@@ -12,6 +12,7 @@ error DeJournalGovernor__prospectVotingNotActive();
 error DeJournalGovernor__AlreadyMember();
 error DeJournalGovernor__prospectVotingStillActive();
 error DeJournalGovernor__prospectFailedVoting();
+error DeJournalGovernor__prospectInductedOrDenied();
 
 contract DeJournalGovernor {
     using SafeCast for uint256;
@@ -144,6 +145,11 @@ contract DeJournalGovernor {
         emit VotedOnProspect(_prospectId, msg.sender, _support);
     }
 
+    /**
+     * @notice This function can be called by anyexisting member to add a prospect as a member.
+     * the function will check if the voting period has ended, if the prospect has enough for votes,
+     * and if the prospect has already been inducted or denied membership
+     */
     function inductMember(
         uint256 _prospectId
     ) public onlyMember returns (uint256) {
@@ -156,9 +162,17 @@ contract DeJournalGovernor {
             s_prospects[_prospectId].againstVotes >
             s_prospects[_prospectId].forVotes
         ) {
+            s_prospects[_prospectId].denied = true;
             revert DeJournalGovernor__prospectFailedVoting();
         }
 
+        if (
+            s_prospects[_prospectId].inducted || s_prospects[_prospectId].denied
+        ) {
+            revert DeJournalGovernor__prospectInductedOrDenied();
+        }
+
+        s_prospects[_prospectId].inducted = true;
         _addMember(s_prospects[_prospectId].prospectAddress);
         return _prospectId;
     }
