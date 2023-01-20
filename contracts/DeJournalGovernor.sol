@@ -7,9 +7,30 @@ import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 error DeJournalGovernor__alreadyInit();
 error DeJournalGovernor__referrerNotMember();
+error DeJournalGovernor__alreadyVotedOnProspect();
+error DeJournalGovernor__prospectVotingNotActive();
 
 contract DeJournalGovernor {
     using SafeCast for uint256;
+
+    struct Prospect {
+        address prospectAddress;
+        address referrer;
+        bytes32 metadataHash;
+        uint256 voteStart;
+        uint256 deadline;
+        uint256 forVotes;
+        uint256 againstVotes;
+        bool inducted;
+        bool denied;
+        mapping(address => ProspectVoteReceipt) receipts;
+    }
+
+    struct ProspectVoteReceipt {
+        bool hasVoted;
+        bool support;
+    }
+
     uint256 private constant PROSPECT_VOTING_DELAY = 1;
     uint private constant PROSPECT_VOTING_PERIOD = 72000;
 
@@ -18,17 +39,16 @@ contract DeJournalGovernor {
     mapping(address => bool) private s_isMember;
     DeJournalToken governanceTokenContract;
 
-    struct Prospect {
-        address prospectAddress;
-        address referrer;
-        bytes32 metadataHash;
-        uint256 voteStart;
-        uint256 deadline;
-        bool inducted;
-        bool denied;
-    }
-
     mapping(uint256 => Prospect) private _prospects;
+
+    event VotedOnProspect(uint256, address, bool);
+
+    modifier onlyMember() {
+        if (!s_isMember[msg.sender]) {
+            revert DeJournalGovernor__referrerNotMember();
+        }
+        _;
+    }
 
     constructor(address[3] memory _members, address _governanceTokenAddress) {
         governanceTokenContract = DeJournalToken(_governanceTokenAddress);
@@ -57,11 +77,8 @@ contract DeJournalGovernor {
     function introduceProspect(
         address _prospectAddress,
         bytes32 _metadataHash
-    ) public returns (uint256) {
+    ) public onlyMember returns (uint256) {
         // require(s_isMember[msg.msg.sender], "Referrer is not a Member");
-        if (!s_isMember[msg.sender]) {
-            revert DeJournalGovernor__referrerNotMember();
-        }
 
         uint256 prospectId = uint256(
             keccak256(abi.encode(_prospectAddress, _metadataHash))
@@ -74,6 +91,38 @@ contract DeJournalGovernor {
         prospect.referrer = msg.sender;
 
         return prospectId;
+    }
+
+    function voteOnProspect(
+        uint256 _prospectId,
+        bool _support
+    ) public onlyMember {
+        if (
+            block.number >= _prospects[_prospectId].deadline ||
+            block.number < _prospects[_prospectId].voteStart
+        ) {
+            revert DeJournalGovernor__prospectVotingNotActive();
+        }
+
+        if (_prospects[_prospectId].receipts[msg.sender].hasVoted) {
+            revert DeJournalGovernor__alreadyVotedOnProspect();
+        }
+
+        if (_support) {
+            _prospects[_prospectId].receipts[msg.sender].hasVoted = true;
+            _prospects[_prospectId].receipts[msg.sender].support = true;
+
+            _prospects[_prospectId].forVotes += 1;
+        }
+
+        if (!_support) {
+            _prospects[_prospectId].receipts[msg.sender].hasVoted = true;
+            _prospects[_prospectId].receipts[msg.sender].support = false;
+
+            _prospects[_prospectId].againstVotes + 1;
+        }
+
+        emit VotedOnProspect(_prospectId, msg.sender, _support);
     }
 
     // view and pure getter functions
